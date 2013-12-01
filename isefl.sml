@@ -255,3 +255,27 @@ fun hedge_union (t, E) = t
   | hedge_union (E, t) = t
   | hedge_union (T(v, _, l, r), t) =
     concat3(v, uni_high(l, trim_high(v, t), v), uni_low(r, trim_low(v, t), v))
+
+(* Rank. *)
+exception Subscript
+
+fun rank (E, _) = raise Subscript
+  | rank (T(v, _, l, r), x) =
+    if lt(x, v)
+    then rank(l, x)
+    else if lt(v, x)
+    then rank(r, x) + size l + 1
+    else size l
+
+(* Index. *)
+fun index (E, _) = raise Subscript
+  | index (T(v, _, l, r), i) =
+    let
+      val nl = size l
+    in
+      if i < nl
+      then index(l, i)
+      else if i > nl
+      then index(r, i - nl - 1)
+      else v
+    end
