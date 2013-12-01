@@ -128,6 +128,7 @@ val treesort = members o tree_from_list
 (* Inefficient. *)
 fun fold_union t1 t2 = inorder_fold(reverse_add, t1, t2)
 
+(* Our last balance maintainer. *)
 fun concat3 (v, E, r) = add(r, v)
   | concat3 (v, l, E) = add(l, v)
   | concat3 (v, l as T(v1, n1, l1, r1), r as T(v2, n2, l2, r2)) =
@@ -148,17 +149,109 @@ fun split_lt (E, _) = E
 fun split_gt (E, _) = E
   | split_gt (T(v, _, l, r), x) =
     if lt(v, x)
-    then split_gt(r, x))
+    then split_gt(r, x)
     else if lt(x, v)
-    then concat3(v, split_gt(l, x), r))
+    then concat3(v, split_gt(l, x), r)
     else r
 
 fun union (E, r) = r
   | union (l, E) = l
-  | union (tree1, T(v, _, l, r)) =
+  | union (t, T(v, _, l, r)) =
     let
-      val l' = split_lt(tree1, v)
-      val r' = split_gt(tree1, v)
+      val l' = split_lt(t, v)
+      val r' = split_gt(t, v)
     in
       concat3(v, union(l', l), union(r', r))
     end
+
+(*  min and delmin traverse each tree.
+    Better to defer this until the last second.
+fun concat (t, E) = t
+  | concat (t1, t2) = concat3(min t2, t1, delmin t2)
+*)
+
+fun concat (E, t) = t
+  | concat (t, E) = t
+  | concat (t1 as T(v1, n1, l1, r1), t2 as T(v2, n2, l2, r2)) =
+    if weight * n1 < n2
+    then T'(v2, concat(t1, l2), r2)
+    else if weight * n2 < n1
+    then T'(v1, l1, concat(r1, t2))
+    else T'(min t2, t1, delmin t2)
+
+fun difference (E, _) = E
+  | difference (l, E) = l
+  | difference (t, T(v, _, l, r)) =
+    let
+      val l' = split_lt(t, v)
+      val r' = split_gt(t, v)
+    in
+      concat(difference(l', l), difference(r', r))
+    end
+
+(* Another slow impl.
+fun intersection (a, b) = difference(b, difference(b, a))
+*)
+
+fun intersection (E, _) = E
+  | intersection (_, E) = E
+  | intersection (t, T(v, _, l, r)) =
+    let
+      val l' = split_lt(t, v)
+      val r' = split_gt(t, v)
+    in
+      if member(v, t)
+      then concat3(v, intersection(l', l), intersection(r', r))
+      else concat(intersection(l', l), intersection(r', r))
+    end
+
+(* Even more inefficient than union. O(n*log(n)) *)
+fun union' (E, (t, low, high)) = split_gt(split_lt(t, high), low)
+  | union' (T (v, _, l, r), (t, low, high)) =
+    concat3(v, union'(l, (t, low, v)), union'(r, (t, v, high)))
+
+fun trim (_, _, E) = E
+  | trim (low, high, t as T(v, _, l, r)) =
+    if lt(low, v)
+    then if lt(v, high)
+      then t
+      else trim(low, high, l)
+    else trim(low, high, r)
+
+fun uni_bd (t, E, _, _) = t
+  | uni_bd (E, T(v, _, l, r), low, high) =
+    concat3(v, split_gt(l, low), split_lt(r, high))
+  | uni_bd (T(v, _, l, r), t, low, high) =
+    concat3(v,
+            uni_bd(l, trim(low, v, t), low, v),
+            uni_bd(r, trim(v, high, t), v, high))
+
+fun trim_low (_, E) = E
+  | trim_low (low, t as T(v, _, _, r)) =
+    if lt(low, v)
+    then t
+    else trim_low(low, r)
+fun trim_high (_, E) = E
+  | trim_high (high, t as T(v, _, l, _)) =
+    if lt(v, high)
+    then t
+    else trim_high(high, l)
+
+fun uni_high (t, E, _) = t
+  | uni_high (E, T(v, _, l, r), high) = concat3(v, l, split_lt(r, high))
+  | uni_high (T(v, _, l, r), t, high) =
+    concat3(v,
+      uni_high(l, trim_high(v, t), v),
+      uni_bd(r, trim(v, high, t), v, high))
+
+fun uni_low (t, E, _) = t
+  | uni_low (E, T(v, _, l, r), low) = concat3(v, split_gt(l, low), r)
+  | uni_low (T(v, _, l, r), t, low) =
+    concat3(v,
+      uni_bd(r, trim(low, v, t), low, v),
+      uni_low(l, trim_low(v, t), v))
+
+fun hedge_union (t, E) = t
+  | hedge_union (E, t) = t
+  | hedge_union (T(v, _, l, r), t) =
+    concat3(v, uni_high(l, trim_high(v, t), v), uni_low(r, trim_low(v, t), v))
