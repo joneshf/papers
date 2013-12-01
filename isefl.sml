@@ -140,7 +140,7 @@ fun concat3 (v, E, r) = add(r, v)
 fun split_lt (E, _) = E
   | split_lt (T(v, _, l, r), x) =
     if lt(x, v)
-    then split_lt(l, v)
+    then split_lt(l, x)
     else if lt(v, x)
     then concat3(v, l, split_lt(r, x))
     else l
@@ -148,13 +148,13 @@ fun split_lt (E, _) = E
 fun split_gt (E, _) = E
   | split_gt (T(v, _, l, r), x) =
     if lt(v, x)
-    then split_gt(r, v)
+    then split_gt(r, x))
     else if lt(x, v)
-    then concat3(v, split_gt(l, x), r)
+    then concat3(v, split_gt(l, x), r))
     else r
 
-fun union (l, E) = l
-  | union (E, r) = r
+fun union (E, r) = r
+  | union (l, E) = l
   | union (tree1, T(v, _, l, r)) =
     let
       val l' = split_lt(tree1, v)
