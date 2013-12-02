@@ -7,6 +7,12 @@ import Prelude hiding (seq)
 -- Should this be implemented as some other ADT?
 type Parser a = String -> [(a, String)]
 
+
+-- Cant actually do this yet.
+--instance Monad Parser where
+--    return = result
+--    (>>=) = bind
+
 -- Primitive parsers.
 -- These are defined this way to follow closer the type signature.
 result :: a -> Parser a
