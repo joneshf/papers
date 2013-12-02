@@ -1,1 +1,1 @@
-This is just me working through Stephen Adams' paper "Implementing Sets Efficiently in a Functional Language".
+This is me working through a collection of different papers found across the tubes.
