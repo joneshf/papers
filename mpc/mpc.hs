@@ -341,3 +341,58 @@ paren = bracket (symbol "(") lexpr (symbol ")")
 
 variable :: Parser String
 variable = identifier ["let", "in"]
+
+-- Monads
+data Option a = Some a | None
+
+instance Monad Option where
+
+    return = Some
+
+    Some x >>= f = f x
+    None   >>= _ = None
+
+instance MonadPlus Option where
+
+    mzero = None
+
+    Some x `mplus` _ = Some x
+    None   `mplus` x = x
+
+data List a = Nil | Cons a (List a)
+
+instance Monad List where
+
+    return x = Cons x Nil
+
+    Nil       >>= _ = Nil
+    Cons x xs >>= f = f x `mplus` (xs >>= f)
+
+instance MonadPlus List where
+
+    mzero = Nil
+
+    Nil         `mplus` x  = x
+    (Cons x xs) `mplus` ys = Cons x (xs `mplus` ys)
+
+newtype State s a = State {getState :: s -> (a, s) }
+
+instance Monad (State s) where
+
+    return x = State (\s -> (x, s))
+
+    -- This is super confusing:
+    -- We apply our first s -> (a, s) to whatever we take in.
+    -- This gives us a new value state tuple,
+    -- so we apply f to our value, which gives us a new State,
+    -- then we update this newest state with the value
+    -- with the value we got from our first application.
+    -- Finally, we wrap everything up in a State.
+    State st >>= f = State $ \s ->
+        let
+            (v, s') = st s
+        in
+            let
+                State s'' = f v
+            in
+                s'' s'
