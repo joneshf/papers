@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances, FunctionalDependencies #-}
+
 module Deter where
 
 import Prelude hiding (seq)
@@ -383,16 +385,28 @@ instance Monad (State s) where
 
     -- This is super confusing:
     -- We apply our first s -> (a, s) to whatever we take in.
-    -- This gives us a new value state tuple,
+    -- This gives us a new (value, state) tuple,
     -- so we apply f to our value, which gives us a new State,
-    -- then we update this newest state with the value
-    -- with the value we got from our first application.
+    -- then we update this state with the state from our first application.
     -- Finally, we wrap everything up in a State.
     State st >>= f = State $ \s ->
         let
             (v, s') = st s
+            State s'' = f v
         in
-            let
-                State s'' = f v
-            in
-                s'' s'
+            s'' s'
+
+class Monad m => StateMonad m s | m -> s where
+
+    -- This is the only thing that needs to be implemented.
+    update :: (s -> s) -> m s
+
+    set :: s -> m s
+    set = update . const
+
+    fetch :: m s
+    fetch = update id
+
+instance StateMonad (State s) s where
+
+    update f = State $ \s -> (s, f s)
