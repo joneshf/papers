@@ -208,3 +208,75 @@ nat = do
     `chainl1` return op
     where
         m `op` n = 10*m + n
+
+-- Efficiency
+
+eval :: Parser Int
+-- Backtracking
+--eval = add `mplus` sub
+--    where
+--        add = do
+--            x <- nat
+--            char '+'
+--            y <- nat
+--            return $ x + y
+--        sub = do
+--            x <- nat
+--            char '-'
+--            y <- nat
+--            return $ x - y
+
+-- Linear time
+--eval = do
+--    x <- nat
+--    add x `mplus` sub x
+--    where
+--        add x = do
+--            char '+'
+--            y <- nat
+--            return $ x + y
+--        sub x = do
+--            char '-'
+--            y <- nat
+--            return $ x - y
+
+-- Easy on the eyes.
+eval = do
+    x <- nat
+    op <- ops [(char '+', (+)), (char '-', (-))]
+    y <- nat
+    return $ x `op` y
+
+-- Would be nice to generalize these to work over monadplus's
+force :: Parser a -> Parser a
+force p = Parser $ \inp ->
+    let
+        x = parse p inp
+    in
+        head x : tail x
+
+-- Strict version of many specific to parsers.
+many' :: Parser a -> Parser [a]
+many' p = force $ do
+    x <- p
+    xs <- many' p
+    return $ x:xs
+    `mplus` return []
+
+first :: Parser a -> Parser a
+first p = Parser $ \inp -> case parse p inp of
+    [] -> []
+    x:_ -> [x]
+
+-- Deterministic choice
+(+++) :: Parser a -> Parser a -> Parser a
+p +++ q = first $ p `mplus` q
+
+number :: Parser Int
+number = nat +++ return 0
+
+color :: Parser String
+color = p1 +++ p2
+    where
+        p1 = string "yellow"
+        p2 = string "orange"
