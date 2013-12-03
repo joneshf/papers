@@ -123,3 +123,26 @@ int = do
 --                char '-'
 --                return negate
 --                `mplus` return id
+
+sepBy1 :: MonadPlus m => m a -> m b -> m [a]
+p `sepBy1` sep = do
+    x <- p
+    xs <- many $ do
+        sep
+        p
+    return (x:xs)
+
+bracket :: MonadPlus m => m a -> m b -> m c -> m b
+bracket open p close = do
+    open
+    x <- p
+    close
+    return x
+
+ints :: Parser [Int]
+ints = bracket (char '[')
+               (int `sepBy1` char ',')
+               (char ']')
+
+sepBy :: MonadPlus m => m a -> m b -> m [a]
+p `sepBy` sep = (p `sepBy1` sep) `mplus` return []
