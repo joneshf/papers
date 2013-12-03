@@ -37,7 +37,8 @@ p `seq` q = p >>= \x ->
 
 -- Combinator to test a specific character.
 sat :: (Char -> Bool) -> Parser Char
-sat p = item >>= \x ->
+sat p = do
+    x <- item
     if p x then return x else mzero
 
 -- Actual parsers
@@ -68,3 +69,57 @@ word = nonEmpty `mplus` return ""
         nonEmpty = letter >>= \x  ->
                    word   >>= \xs ->
                    return (x:xs)
+
+-- Match specific strings.
+string :: String -> Parser String
+string ""     = return ""
+string (c:cs) = do
+    char c
+    string cs
+    return (c:cs)
+
+-- More combinators
+
+-- This could be made specific to Parsers,
+-- but it's a fun exercise to generalize it.
+many :: MonadPlus m => m a -> m [a]
+many p = do
+    x <- p
+    xs <- many p
+    return (x:xs)
+    `mplus` return []
+
+ident :: Parser String
+ident = do
+    x <- lower
+    xs <- many alphaNum
+    return (x:xs)
+
+-- This seems to just take the init of many, so why not define it this way?
+many1 :: MonadPlus m => m a -> m [a]
+many1 p = do
+    y <- p
+    ys <- many p
+    return (y:ys)
+
+nat :: Parser Int
+nat = do
+    ns <- many1 digit
+    return $ read ns
+
+int :: Parser Int
+int = do
+    char '-'
+    n <- nat
+    return $ -n
+    `mplus` nat
+-- More "sophisticated".
+--int = do
+--    f <- op
+--    n <- nat
+--    return $ f n
+--        where
+--            op = do
+--                char '-'
+--                return negate
+--                `mplus` return id
