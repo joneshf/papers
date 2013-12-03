@@ -30,7 +30,7 @@ item = Parser $ \inp -> case inp of
     x:xs -> [(x, xs)]
 
 -- In case we wanted seq anyway.
-seq :: Parser a -> Parser b -> Parser (a, b)
+seq :: MonadPlus m => m a -> m b -> m (a, b)
 p `seq` q = p >>= \x ->
             q >>= \y ->
             return (x, y)
