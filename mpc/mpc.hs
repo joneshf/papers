@@ -2,6 +2,7 @@ module Deter where
 
 import Prelude hiding (seq)
 import Control.Monad
+import Data.Char
 
 -- A parser takes a String and returns a list of `(a, String)` 2-tuples.
 -- If the list is empty, the parser failed.
@@ -39,7 +40,8 @@ p `seq` q = p >>= \x ->
 sat :: (Char -> Bool) -> Parser Char
 sat p = do
     x <- item
-    if p x then return x else mzero
+    guard $ p x
+    return x
 
 -- Actual parsers
 
@@ -102,10 +104,10 @@ many1 p = do
     ys <- many p
     return (y:ys)
 
-nat :: Parser Int
-nat = do
-    ns <- many1 digit
-    return $ read ns
+--nat :: Parser Int
+--nat = do
+--    ns <- many1 digit
+--    return $ read ns
 
 int :: Parser Int
 int = do
@@ -146,3 +148,63 @@ ints = bracket (char '[')
 
 sepBy :: MonadPlus m => m a -> m b -> m [a]
 p `sepBy` sep = (p `sepBy1` sep) `mplus` return []
+
+-- Simple arithmetic expression parser.
+
+expr :: Parser Int
+expr = term `chainl1` addOp
+
+term :: Parser Int
+term = factor `chainr1` expOp
+
+expOp :: Parser (Int -> Int -> Int)
+expOp = ops [(char '^', (^))]
+
+factor :: Parser Int
+factor = nat `mplus` bracket (char '(') expr (char ')')
+
+addOp :: Parser (Int -> Int -> Int)
+addOp = ops [(char '+', (+)), (char '-', (-))]
+
+-- Construct operators easier.
+ops :: MonadPlus m => [(m a, b)] -> m b
+ops xs = foldr1 mplus $ do
+    (p, op) <- xs
+    return $ do
+        p
+        return op
+
+-- More efficient?
+chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+p `chainl1` op = do
+    z <- p
+    rest z
+    where
+        rest x = do
+            f <- op
+            y <- p
+            rest (x `f` y)
+            `mplus` return x
+
+chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+p `chainr1` op = do
+    z <- p
+    do
+        f <- op
+        y <- p `chainr1` op
+        return $ z `f` y
+        `mplus` return z
+
+chainl :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+chainl p op z = p `chainl1` op `mplus` return z
+
+chainr :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+chainr p op z = p `chainr1` op `mplus` return z
+
+nat :: Parser Int
+nat = do
+    d <- digit
+    return $ ord d - ord '0'
+    `chainl1` return op
+    where
+        m `op` n = 10*m + n
