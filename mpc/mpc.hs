@@ -10,17 +10,17 @@ import Data.Char
 newtype Parser a = Parser (String -> [(a, String)])
 
 -- Need a way to deconstruct parsers.
-parse :: Parser a -> String -> [(a, String)]
-parse (Parser p) = p
+deParse :: Parser a -> String -> [(a, String)]
+deParse (Parser p) = p
 
 instance Monad Parser where
     return v = Parser $ \inp -> [(v, inp)]
     p >>= f  = Parser $ \inp ->
-        concat [parse (f v) inp' | (v, inp') <- parse p inp]
+        concat [deParse (f v) inp' | (v, inp') <- deParse p inp]
 
 instance MonadPlus Parser where
     mzero = Parser $ const []
-    p `mplus` q = Parser $ \inp -> parse p inp ++ parse q inp
+    p `mplus` q = Parser $ \inp -> deParse p inp ++ deParse q inp
 
 -- Primitive parsers.
 -- These are defined this way to follow closer the type signature.
@@ -31,7 +31,7 @@ item = Parser $ \inp -> case inp of
     x:xs -> [(x, xs)]
 
 -- In case we wanted seq anyway.
-seq :: MonadPlus m => m a -> m b -> m (a, b)
+seq :: Parser a -> Parser b -> Parser (a, b)
 p `seq` q = p >>= \x ->
             q >>= \y ->
             return (x, y)
@@ -60,13 +60,13 @@ upper = sat (\c -> 'A' <= c && c <= 'Z')
 -- More parsers
 
 letter :: Parser Char
-letter = lower `mplus` upper
+letter = lower +++ upper
 
 alphaNum :: Parser Char
-alphaNum = letter `mplus` digit
+alphaNum = letter +++ digit
 
 word :: Parser String
-word = nonEmpty `mplus` return ""
+word = nonEmpty +++ return ""
     where
         nonEmpty = letter >>= \x  ->
                    word   >>= \xs ->
@@ -84,12 +84,12 @@ string (c:cs) = do
 
 -- This could be made specific to Parsers,
 -- but it's a fun exercise to generalize it.
-many :: MonadPlus m => m a -> m [a]
-many p = do
-    x <- p
-    xs <- many p
-    return (x:xs)
-    `mplus` return []
+--many :: MonadPlus m => m a -> m [a]
+--many p = do
+--    x <- p
+--    xs <- many p
+--    return (x:xs)
+--    `mplus` return []
 
 ident :: Parser String
 ident = do
@@ -98,7 +98,7 @@ ident = do
     return (x:xs)
 
 -- This seems to just take the init of many, so why not define it this way?
-many1 :: MonadPlus m => m a -> m [a]
+many1 :: Parser a -> Parser [a]
 many1 p = do
     y <- p
     ys <- many p
@@ -114,7 +114,7 @@ int = do
     char '-'
     n <- nat
     return $ -n
-    `mplus` nat
+    +++ nat
 -- More "sophisticated".
 --int = do
 --    f <- op
@@ -126,7 +126,7 @@ int = do
 --                return negate
 --                `mplus` return id
 
-sepBy1 :: MonadPlus m => m a -> m b -> m [a]
+sepBy1 :: Parser a -> Parser b -> Parser [a]
 p `sepBy1` sep = do
     x <- p
     xs <- many $ do
@@ -134,7 +134,7 @@ p `sepBy1` sep = do
         p
     return (x:xs)
 
-bracket :: MonadPlus m => m a -> m b -> m c -> m b
+bracket :: Parser a -> Parser b -> Parser c -> Parser b
 bracket open p close = do
     open
     x <- p
@@ -146,8 +146,8 @@ ints = bracket (char '[')
                (int `sepBy1` char ',')
                (char ']')
 
-sepBy :: MonadPlus m => m a -> m b -> m [a]
-p `sepBy` sep = (p `sepBy1` sep) `mplus` return []
+sepBy :: Parser a -> Parser b -> Parser [a]
+p `sepBy` sep = (p `sepBy1` sep) +++ return []
 
 -- Simple arithmetic expression parser.
 
@@ -161,21 +161,21 @@ expOp :: Parser (Int -> Int -> Int)
 expOp = ops [(char '^', (^))]
 
 factor :: Parser Int
-factor = nat `mplus` bracket (char '(') expr (char ')')
+factor = nat +++ bracket (char '(') expr (char ')')
 
 addOp :: Parser (Int -> Int -> Int)
 addOp = ops [(char '+', (+)), (char '-', (-))]
 
 -- Construct operators easier.
-ops :: MonadPlus m => [(m a, b)] -> m b
-ops xs = foldr1 mplus $ do
+ops :: [(Parser a, b)] -> Parser b
+ops xs = foldr1 (+++) $ do
     (p, op) <- xs
     return $ do
         p
         return op
 
 -- More efficient?
-chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 p `chainl1` op = do
     z <- p
     rest z
@@ -184,22 +184,22 @@ p `chainl1` op = do
             f <- op
             y <- p
             rest (x `f` y)
-            `mplus` return x
+            +++ return x
 
-chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
+chainr1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 p `chainr1` op = do
     z <- p
     do
         f <- op
         y <- p `chainr1` op
         return $ z `f` y
-        `mplus` return z
+        +++ return z
 
-chainl :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
-chainl p op z = p `chainl1` op `mplus` return z
+chainl :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
+chainl p op z = p `chainl1` op +++ return z
 
-chainr :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
-chainr p op z = p `chainr1` op `mplus` return z
+chainr :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
+chainr p op z = p `chainr1` op +++ return z
 
 nat :: Parser Int
 nat = do
@@ -251,20 +251,20 @@ eval = do
 force :: Parser a -> Parser a
 force p = Parser $ \inp ->
     let
-        x = parse p inp
+        x = deParse p inp
     in
         head x : tail x
 
 -- Strict version of many specific to parsers.
-many' :: Parser a -> Parser [a]
-many' p = force $ do
+many :: Parser a -> Parser [a]
+many p = force $ do
     x <- p
-    xs <- many' p
+    xs <- many p
     return $ x:xs
-    `mplus` return []
+    +++ return []
 
 first :: Parser a -> Parser a
-first p = Parser $ \inp -> case parse p inp of
+first p = Parser $ \inp -> case deParse p inp of
     [] -> []
     x:_ -> [x]
 
@@ -280,3 +280,101 @@ color = p1 +++ p2
     where
         p1 = string "yellow"
         p2 = string "orange"
+
+-- Lexing
+
+spaces :: Parser ()
+spaces = do
+    many1 $ sat isSpace
+    return ()
+
+comment :: Parser ()
+comment = do
+    string "--"
+    many $ sat (/= '\n')
+    return ()
+
+-- Is this the desired solution?
+multiComment :: Parser ()
+multiComment = do
+    bracket (string "{-")
+            (many $ sat $ const True)
+            (string "-}")
+    return ()
+
+junk :: Parser ()
+junk = do
+    many $ spaces +++ comment
+    return ()
+
+parse :: Parser a -> Parser a
+parse p = do
+    junk
+    p
+
+token :: Parser a -> Parser a
+token p = do
+    v <- p
+    junk
+    return v
+
+natural :: Parser Int
+natural = token nat
+
+integer :: Parser Int
+integer = token int
+
+symbol :: String -> Parser String
+symbol = token . string
+
+identifier :: [String] -> Parser String
+identifier xs = token $ do
+    x <- ident
+    guard $ x `notElem` xs
+    return x
+
+-- Lambda-exp's
+
+data Expr = App Expr Expr           -- application
+          | Lam String Expr         -- lambda abstraction
+          | Let String Expr Expr    -- local definition
+          | Var String              -- variable
+          deriving Show
+
+lexpr :: Parser Expr
+lexpr = atom `chainl1` return App
+
+atom :: Parser Expr
+atom =  lam
+    +++ local
+    +++ var
+    +++ paren
+
+lam :: Parser Expr
+lam = do
+    symbol "\\"
+    x <- variable
+    symbol "->"
+    e <- lexpr
+    return $ Lam x e
+
+local :: Parser Expr
+local = do
+    symbol "let"
+    x <- variable
+    symbol "="
+    e <- lexpr
+    symbol "in"
+    body <- lexpr
+    return $ Let x e body
+
+var :: Parser Expr
+var = do
+    x <- variable
+    return $ Var x
+
+paren :: Parser Expr
+paren = bracket (symbol "(") lexpr (symbol ")")
+
+variable :: Parser String
+variable = identifier ["let", "in"]
