@@ -31,7 +31,7 @@ item = Parser $ \inp -> case inp of
     x:xs -> [(x, xs)]
 
 -- In case we wanted seq anyway.
-seq :: Parser a -> Parser b -> Parser (a, b)
+seq :: MonadPlus m => m a -> m b -> m (a, b)
 p `seq` q = p >>= \x ->
             q >>= \y ->
             return (x, y)
@@ -60,13 +60,13 @@ upper = sat (\c -> 'A' <= c && c <= 'Z')
 -- More parsers
 
 letter :: Parser Char
-letter = lower +++ upper
+letter = lower `mplus` upper
 
 alphaNum :: Parser Char
-alphaNum = letter +++ digit
+alphaNum = letter `mplus` digit
 
 word :: Parser String
-word = nonEmpty +++ return ""
+word = nonEmpty `mplus` return ""
     where
         nonEmpty = letter >>= \x  ->
                    word   >>= \xs ->
@@ -84,49 +84,34 @@ string (c:cs) = do
 
 -- This could be made specific to Parsers,
 -- but it's a fun exercise to generalize it.
---many :: MonadPlus m => m a -> m [a]
---many p = do
---    x <- p
---    xs <- many p
---    return (x:xs)
---    `mplus` return []
+many :: MonadPlus m => m a -> m [a]
+many p = do
+    x <- p
+    xs <- many p
+    return (x:xs)
+    `mplus` return []
 
 ident :: Parser String
 ident = do
     x <- lower
-    xs <- many alphaNum
+    xs <- many' alphaNum
     return (x:xs)
 
 -- This seems to just take the init of many, so why not define it this way?
-many1 :: Parser a -> Parser [a]
+many1 :: MonadPlus m => m a -> m [a]
 many1 p = do
     y <- p
     ys <- many p
     return (y:ys)
-
---nat :: Parser Int
---nat = do
---    ns <- many1 digit
---    return $ read ns
 
 int :: Parser Int
 int = do
     char '-'
     n <- nat
     return $ -n
-    +++ nat
--- More "sophisticated".
---int = do
---    f <- op
---    n <- nat
---    return $ f n
---        where
---            op = do
---                char '-'
---                return negate
---                `mplus` return id
+    `mplus` nat
 
-sepBy1 :: Parser a -> Parser b -> Parser [a]
+sepBy1 :: MonadPlus m => m a -> m b -> m [a]
 p `sepBy1` sep = do
     x <- p
     xs <- many $ do
@@ -134,7 +119,7 @@ p `sepBy1` sep = do
         p
     return (x:xs)
 
-bracket :: Parser a -> Parser b -> Parser c -> Parser b
+bracket :: MonadPlus m => m a -> m b -> m c -> m b
 bracket open p close = do
     open
     x <- p
@@ -146,8 +131,8 @@ ints = bracket (char '[')
                (int `sepBy1` char ',')
                (char ']')
 
-sepBy :: Parser a -> Parser b -> Parser [a]
-p `sepBy` sep = (p `sepBy1` sep) +++ return []
+sepBy :: MonadPlus m => m a -> m b -> m [a]
+p `sepBy` sep = (p `sepBy1` sep) `mplus` return []
 
 -- Simple arithmetic expression parser.
 
@@ -161,21 +146,21 @@ expOp :: Parser (Int -> Int -> Int)
 expOp = ops [(char '^', (^))]
 
 factor :: Parser Int
-factor = nat +++ bracket (char '(') expr (char ')')
+factor = nat `mplus` bracket (char '(') expr (char ')')
 
 addOp :: Parser (Int -> Int -> Int)
 addOp = ops [(char '+', (+)), (char '-', (-))]
 
 -- Construct operators easier.
-ops :: [(Parser a, b)] -> Parser b
-ops xs = foldr1 (+++) $ do
+ops :: MonadPlus m => [(m a, b)] -> m b
+ops xs = foldr1 mplus $ do
     (p, op) <- xs
     return $ do
         p
         return op
 
 -- More efficient?
-chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainl1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
 p `chainl1` op = do
     z <- p
     rest z
@@ -184,22 +169,22 @@ p `chainl1` op = do
             f <- op
             y <- p
             rest (x `f` y)
-            +++ return x
+            `mplus` return x
 
-chainr1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainr1 :: MonadPlus m => m a -> m (a -> a -> a) -> m a
 p `chainr1` op = do
     z <- p
     do
         f <- op
         y <- p `chainr1` op
         return $ z `f` y
-        +++ return z
+        `mplus` return z
 
-chainl :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
-chainl p op z = p `chainl1` op +++ return z
+chainl :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+chainl p op z = p `chainl1` op `mplus` return z
 
-chainr :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
-chainr p op z = p `chainr1` op +++ return z
+chainr :: MonadPlus m => m a -> m (a -> a -> a) -> a -> m a
+chainr p op z = p `chainr1` op `mplus` return z
 
 nat :: Parser Int
 nat = do
@@ -212,35 +197,6 @@ nat = do
 -- Efficiency
 
 eval :: Parser Int
--- Backtracking
---eval = add `mplus` sub
---    where
---        add = do
---            x <- nat
---            char '+'
---            y <- nat
---            return $ x + y
---        sub = do
---            x <- nat
---            char '-'
---            y <- nat
---            return $ x - y
-
--- Linear time
---eval = do
---    x <- nat
---    add x `mplus` sub x
---    where
---        add x = do
---            char '+'
---            y <- nat
---            return $ x + y
---        sub x = do
---            char '-'
---            y <- nat
---            return $ x - y
-
--- Easy on the eyes.
 eval = do
     x <- nat
     op <- ops [(char '+', (+)), (char '-', (-))]
@@ -256,10 +212,10 @@ force p = Parser $ \inp ->
         head x : tail x
 
 -- Strict version of many specific to parsers.
-many :: Parser a -> Parser [a]
-many p = force $ do
+many' :: Parser a -> Parser [a]
+many' p = force $ do
     x <- p
-    xs <- many p
+    xs <- many' p
     return $ x:xs
     +++ return []
 
@@ -291,20 +247,20 @@ spaces = do
 comment :: Parser ()
 comment = do
     string "--"
-    many $ sat (/= '\n')
+    many' $ sat (/= '\n')
     return ()
 
 -- Is this the desired solution?
 multiComment :: Parser ()
 multiComment = do
     bracket (string "{-")
-            (many $ sat $ const True)
+            (many' $ sat $ const True)
             (string "-}")
     return ()
 
 junk :: Parser ()
 junk = do
-    many $ spaces +++ comment
+    many' $ spaces +++ comment
     return ()
 
 parse :: Parser a -> Parser a
@@ -339,6 +295,7 @@ data Expr = App Expr Expr           -- application
           | Lam String Expr         -- lambda abstraction
           | Let String Expr Expr    -- local definition
           | Var String              -- variable
+          | Nat Int
           deriving Show
 
 lexpr :: Parser Expr
@@ -348,6 +305,7 @@ atom :: Parser Expr
 atom =  lam
     +++ local
     +++ var
+    +++ num
     +++ paren
 
 lam :: Parser Expr
@@ -372,6 +330,11 @@ var :: Parser Expr
 var = do
     x <- variable
     return $ Var x
+
+num :: Parser Expr
+num = do
+    d <- nat
+    return $ Nat d
 
 paren :: Parser Expr
 paren = bracket (symbol "(") lexpr (symbol ")")
