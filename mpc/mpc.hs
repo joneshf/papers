@@ -1,6 +1,7 @@
 module Deter where
 
 import Prelude hiding (seq)
+import Control.Monad
 
 -- A parser takes a String and returns a list of `(a, String)` 2-tuples.
 -- If the list is empty, the parser failed.
@@ -16,11 +17,12 @@ instance Monad Parser where
     p >>= f  = Parser $ \inp ->
         concat [parse (f v) inp' | (v, inp') <- parse p inp]
 
+instance MonadPlus Parser where
+    mzero = Parser $ const []
+    p `mplus` q = Parser $ \inp -> parse p inp ++ parse q inp
+
 -- Primitive parsers.
 -- These are defined this way to follow closer the type signature.
-
-zero :: Parser a
-zero = Parser $ const []
 
 item :: Parser Char
 item = Parser $ \inp -> case inp of
@@ -36,7 +38,7 @@ p `seq` q = p >>= \x ->
 -- Combinator to test a specific character.
 sat :: (Char -> Bool) -> Parser Char
 sat p = item >>= \x ->
-    if p x then return x else zero
+    if p x then return x else mzero
 
 -- Actual parsers
 
@@ -52,20 +54,16 @@ lower = sat (\c -> 'a' <= c && c <= 'z')
 upper :: Parser Char
 upper = sat (\c -> 'A' <= c && c <= 'Z')
 
--- Choice operator
-plus :: Parser a -> Parser a -> Parser a
-p `plus` q = Parser $ \inp -> parse p inp ++ parse q inp
-
 -- More parsers
 
 letter :: Parser Char
-letter = lower `plus` upper
+letter = lower `mplus` upper
 
 alphaNum :: Parser Char
-alphaNum = letter `plus` digit
+alphaNum = letter `mplus` digit
 
 word :: Parser String
-word = nonEmpty `plus` return ""
+word = nonEmpty `mplus` return ""
     where
         nonEmpty = letter >>= \x  ->
                    word   >>= \xs ->
