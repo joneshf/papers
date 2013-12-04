@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances, FunctionalDependencies, NoMonomorphismRestriction #-}
 
 module Deter where
 
@@ -381,7 +381,7 @@ newtype State s a = State {getState :: s -> (a, s) }
 
 instance Monad (State s) where
 
-    return x = State (\s -> (x, s))
+    return x = State $ \s -> (x, s)
 
     -- This is super confusing:
     -- We apply our first s -> (a, s) to whatever we take in.
@@ -410,3 +410,31 @@ class Monad m => StateMonad m s | m -> s where
 instance StateMonad (State s) s where
 
     update f = State $ \s -> (s, f s)
+
+newtype StateM m s a = StateM { getStateM :: s -> m (a, s) }
+
+instance Monad m => Monad (StateM m s) where
+
+    return x = StateM $ \s -> return (x, s)
+
+    -- No worldly clue.
+    -- But it should be threading them together.
+    StateM stm >>= f = StateM $ stm >=> (\(v, s') -> getStateM (f v) s')
+
+instance MonadPlus m => MonadPlus (StateM m s) where
+
+    mzero = StateM $ const mzero
+
+    StateM stma `mplus` StateM stmb = StateM $ \s -> stma s `mplus` stmb s
+
+instance Monad m => StateMonad (StateM m s) s where
+
+    update f = StateM $ \s -> return (s, f s)
+
+newtype NewParser a = NewParser { getNewParser :: StateM [] String a }
+
+-- This is getting unwieldy.
+--item' :: NewParser Char
+item' = do
+    x:_ <- update tail
+    return x
