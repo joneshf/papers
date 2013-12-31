@@ -1,12 +1,13 @@
 module Zipper where
 
-data Tree i = Item i
-            | Section [Tree i]
-            deriving Show
+data Tree a = Item a
+            | Section [Tree a]
+            | Siblings ([Tree a], Tree a, [Tree a])
+     deriving Show
 
 data Path a = Top
             | Node ([Tree a], Path a, [Tree a])
-            deriving Show
+     deriving Show
 
 data Location a = Loc (Tree a, Path a)
     deriving Show
@@ -62,3 +63,12 @@ delete (Loc (_, Top))                = error "Delete of Top"
 delete (Loc (_, Node (l, u, r:rs)))  = Loc (r, Node (l, u, rs))
 delete (Loc (_, Node (l:ls, u, []))) = Loc (l, Node (ls, u, []))
 delete (Loc (_, Node ([], u, [])))   = Loc (Section [], u)
+
+-- Memo operations.
+goUpMemo :: Location a -> Location a
+goUpMemo (Loc (t, Node (l, p, r))) = Loc (Siblings (l, t, r), p)
+goUpMemo l                         = goUp l
+
+goDownMemo :: Location a -> Location a
+goDownMemo (Loc (Siblings (l, t, r), p)) = Loc (t, Node (l, p, r))
+goDownMemo l                             = goDown l
