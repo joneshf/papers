@@ -67,3 +67,28 @@ val i = In (valP i)
 
 add :: AddExpr1 -> AddExpr1 -> AddExpr1
 add e1 e2 = In (addP e1 e2)
+
+-- Polynomial Bifunctors
+
+data K2 a         x y = K2 a
+data Fst          x y = Fst x
+data Snd          x y = Snd y
+data Sum2 p q     x y = L2 (p x y) | R2 (q x y)
+data Product2 p q x y = Pair2 (p x y) (q x y)
+
+type One2 = K2 ()
+
+class Bifunctor p where
+    bimap :: (s1 -> t1) -> (s2 -> t2) -> p s1 s2 -> p t1 t2
+
+instance Bifunctor (K2 a) where
+    bimap _ _ (K2 a) = K2 a
+instance Bifunctor Fst where
+    bimap f _ (Fst x) = Fst (f x)
+instance Bifunctor Snd where
+    bimap _ g (Snd y) = Snd (g y)
+instance (Bifunctor p, Bifunctor q) => Bifunctor (Sum2 p q) where
+    bimap f g (L2 p) = L2 (bimap f g p)
+    bimap f g (R2 q) = R2 (bimap f g q)
+instance (Bifunctor p, Bifunctor q) => Bifunctor (Product2 p q) where
+    bimap f g (Pair2 p q) = Pair2 (bimap f g p) (bimap f g q)
