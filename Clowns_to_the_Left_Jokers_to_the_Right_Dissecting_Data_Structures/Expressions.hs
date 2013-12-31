@@ -92,3 +92,14 @@ instance (Bifunctor p, Bifunctor q) => Bifunctor (Sum2 p q) where
     bimap f g (R2 q) = R2 (bimap f g q)
 instance (Bifunctor p, Bifunctor q) => Bifunctor (Product2 p q) where
     bimap f g (Pair2 p q) = Pair2 (bimap f g p) (bimap f g q)
+
+data Zero
+
+refute :: Zero -> a
+refute x = x `seq` error "Nope"
+
+inflate :: Functor p => p Zero -> p x
+inflate = fmap refute
+
+type Zero1 = K1 Zero
+type Zero2 = K2 Zero
