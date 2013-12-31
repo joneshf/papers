@@ -1,29 +1,37 @@
 module Zipper where
 
-data Zipper a = Zipper ([a], a, [a])
-    deriving (Eq, Show)
+data Tree i = Item i
+            | Section [Tree i]
+            deriving Show
 
-left :: Zipper a -> Zipper a
-left (Zipper (as, b, c:cs)) = Zipper (b:as, c, cs)
-left z             = z
+data Path a = Top
+            | Node ([Tree a], Path a, [Tree a])
+            deriving Show
 
-right :: Zipper a -> Zipper a
-right (Zipper (a:as, b, cs)) = Zipper (as, a, b:cs)
-right z                      = z
+data Location a = Loc (Tree a, Path a)
+    deriving Show
 
-toList :: Zipper a -> [a]
-toList (Zipper ([], b, cs)) = b:cs
-toList z                    = toList . right $ z
+-- Parse tree for arithmetic.
+--Section [Section [Item "a", Item "*", Item "b"],
+--         Item "+",
+--         Section [Item "c", Item "*", Item "d"]]
 
-component :: Eq a => a -> Zipper a -> Bool
-component a (Zipper (_, b, [])) | a /= b = False
-component a (Zipper (as, b, c:cs))
-    | b == a    = True
-    | otherwise = component a (Zipper (b:as, c, cs))
+-- I don't much care for these partial functions.
+goLeft :: Location a -> Location a
+goLeft (Loc (_, Top))               = error "Left of Top"
+goLeft (Loc (_, Node ([], _, _)))   = error "Left of First"
+goLeft (Loc (t, Node (l:ls, u, r))) = Loc (l, Node (ls, u, t:r))
 
-modify :: Eq a => (a -> a) -> a -> Zipper a -> Zipper a
-modify _ a z@(Zipper (_, b, []))
-    | a /= b    = z
-modify f a (Zipper (as, b, c:cs))
-    | a == b    = modify f a (Zipper (f b : as, c, cs))
-    | otherwise = modify f a (Zipper (b : as, c, cs))
+goRight :: Location a -> Location a
+goRight (Loc (_, Top))               = error "Right of Top"
+goRight (Loc (_, Node ([], _, _)))   = error "Right of First"
+goRight (Loc (t, Node (l, u, r:rs))) = Loc (r, Node (t:l, u, rs))
+
+goUp :: Location a -> Location a
+goUp (Loc (_, Top))            = error "Up of Top"
+goUp (Loc (t, Node (l, u, r))) = Loc (Section (reverse l ++ t:r), u)
+
+goDown :: Location a -> Location a
+goDown (Loc (Item _, _))         = error "Down of Item"
+goDown (Loc (Section [], _))     = error "Down of Empty"
+goDown (Loc (Section (t:ts), p)) = Loc (t, Node ([], p, ts))
